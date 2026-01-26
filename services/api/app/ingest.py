@@ -27,11 +27,12 @@ def ingest_portfolio(payload: PortfolioSnapshotIn, db: Session = Depends(get_db)
     db.commit()
     db.refresh(row)
 
-    # fire-and-forget broadcast
+    # broadcast (best-effort). This runs in FastAPI's threadpool context; schedule on loop.
     try:
         import asyncio
 
-        asyncio.create_task(
+        loop = asyncio.get_event_loop()
+        loop.create_task(
             hub.publish(
                 WSMessage(
                     type="portfolio.snapshot",
@@ -46,6 +47,7 @@ def ingest_portfolio(payload: PortfolioSnapshotIn, db: Session = Depends(get_db)
             )
         )
     except Exception:
+        # no running loop / broadcast not critical for v0
         pass
 
     return PortfolioSnapshotOut(
