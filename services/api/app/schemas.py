@@ -122,11 +122,27 @@ class PortfolioSnapshotIn(BaseModel):
 # Backtests
 class BacktestRunCreate(BaseModel):
     name: str = "Portfolio Backtest"
-    symbols: List[str] = Field(default_factory=lambda: ["AAPL", "MSFT", "BTC/USD"])
+    symbols: List[str] = Field(default_factory=lambda: ["AAPL", "MSFT", "NVDA", "BTC/USD", "ETH/USD"])
     start: datetime
     end: datetime
     timeframe: str = "1Min"  # 1Min|5Min|15Min|1Hour|1Day
     starting_cash: float = Field(default=10_000.0, gt=0)
+
+    # Portfolio caps (0..1). Any leftover stays as cash.
+    crypto_max_pct: float = Field(default=0.50, ge=0.0, le=1.0)
+    single_symbol_max_pct: float = Field(default=0.50, ge=0.0, le=1.0)
+
+
+class BacktestSuiteCreate(BaseModel):
+    name: str = "Backtest Suite"
+    symbols: List[str] = Field(default_factory=lambda: ["AAPL", "MSFT", "NVDA", "BTC/USD", "ETH/USD"])
+    start: datetime
+    end: datetime
+    timeframes: List[str] = Field(default_factory=lambda: ["1Min", "5Min", "15Min", "1Hour", "1Day"])
+    starting_cash: float = Field(default=10_000.0, gt=0)
+
+    crypto_max_pct: float = Field(default=0.50, ge=0.0, le=1.0)
+    single_symbol_max_pct: float = Field(default=0.50, ge=0.0, le=1.0)
 
 
 class BacktestRunOut(BaseModel):

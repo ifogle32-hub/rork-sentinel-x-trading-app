@@ -18,6 +18,7 @@ from .schemas import (
     BacktestRunCreate,
     BacktestRunOut,
     BacktestTradeOut,
+    BacktestSuiteCreate,
 )
 
 router = APIRouter(prefix="/backtest", tags=["backtest"])
@@ -99,6 +100,9 @@ def _ema(prev: float | None, price: float, period: int) -> float:
 def _run_portfolio_backtest(
     bars_by_symbol: Dict[str, List[Bar]],
     starting_cash: float,
+    *,
+    crypto_max_pct: float,
+    single_symbol_max_pct: float,
     fast: int = 12,
     slow: int = 26,
     slippage_bps: float = 2.0,
@@ -120,6 +124,9 @@ def _run_portfolio_backtest(
     for sym, bars in bars_by_symbol.items():
         close_map[sym] = {b.ts: b.close for b in bars}
 
+    # Forward-fill pricing for valuation.
+    last_price: Dict[str, float | None] = {sym: None for sym in bars_by_symbol.keys()}
+
     symbols = sorted(bars_by_symbol.keys())
 
     cash = starting_cash
@@ -136,54 +143,77 @@ def _run_portfolio_backtest(
         eq = cash
         for s in symbols:
             p = close_map[s].get(ts)
-            if p is None:
+            if p is not None:
+                last_price[s] = p
+            p2 = last_price[s]
+            if p2 is None:
                 continue
-            eq += qty[s] * p
+            eq += qty[s] * p2
         return eq
 
     for ts in all_ts:
-        # Update signals per symbol
+        # Update signals per symbol (only update EMAs when we have a fresh bar at this ts)
         desired_in: Dict[str, bool] = {}
-        prices: Dict[str, float] = {}
+        fresh_prices: Dict[str, float] = {}
         for s in symbols:
             p = close_map[s].get(ts)
             if p is None:
                 continue
-            prices[s] = p
+            last_price[s] = p
+            fresh_prices[s] = p
             ema_fast[s] = _ema(ema_fast[s], p, fast)
             ema_slow[s] = _ema(ema_slow[s], p, slow)
             state = 1 if (ema_fast[s] or 0) >= (ema_slow[s] or 0) else -1
             desired_in[s] = state == 1
 
-        if not prices:
-            continue
-
-        # Determine target weights (equal among desired_in)
-        active = [s for s, on in desired_in.items() if on]
+        # We can still value equity even if no symbol printed this exact ts, but skip trading.
         eq = mkt_equity(ts)
         equity_points.append((ts, eq, cash))
+
+        if not fresh_prices:
+            continue
+
+        # Determine target weights among active symbols (equal, then apply caps)
+        active = [s for s, on in desired_in.items() if on]
 
         if not active:
             # liquidate everything
             for s in symbols:
-                if qty[s] != 0.0 and s in prices:
+                if qty[s] != 0.0 and s in fresh_prices:
                     sell_qty = qty[s]
-                    exec_price = prices[s] * (1.0 - slippage_bps / 10_000.0)
+                    exec_price = fresh_prices[s] * (1.0 - slippage_bps / 10_000.0)
                     cash += sell_qty * exec_price
                     qty[s] = 0.0
                     trades.append((ts, s, "SELL", sell_qty, exec_price, "risk_off"))
             continue
 
-        target_weight = 1.0 / len(active)
+        base_weight = 1.0 / len(active)
 
-        # Rebalance: for simplicity, fully invest equal weight across active symbols.
-        # Compute desired dollar per active symbol
+        # Start with equal weights for active symbols.
+        weights: Dict[str, float] = {s: (base_weight if s in active else 0.0) for s in symbols}
+
+        # Apply single-symbol cap.
+        for s in list(weights.keys()):
+            weights[s] = min(weights[s], single_symbol_max_pct)
+
+        # Apply crypto cap by scaling crypto weights down if needed.
+        crypto_syms = [s for s in weights.keys() if "/" in s]
+        crypto_total = sum(weights[s] for s in crypto_syms)
+        if crypto_total > crypto_max_pct and crypto_total > 0:
+            scale = crypto_max_pct / crypto_total
+            for s in crypto_syms:
+                weights[s] *= scale
+
+        # Total invested weight. Residual stays in cash.
+        invested = sum(weights.values())
+
+        # Rebalance toward target weights using freshest prices only.
         for s in symbols:
-            if s not in prices:
+            if s not in fresh_prices:
                 continue
 
-            target_value = (eq * target_weight) if s in active else 0.0
-            current_value = qty[s] * prices[s]
+            target_value = (eq * weights[s])
+            current_value = qty[s] * fresh_prices[s]
             delta_value = target_value - current_value
 
             if abs(delta_value) < 1e-6:
@@ -191,7 +221,7 @@ def _run_portfolio_backtest(
 
             if delta_value > 0:
                 # buy
-                exec_price = prices[s] * (1.0 + slippage_bps / 10_000.0)
+                exec_price = fresh_prices[s] * (1.0 + slippage_bps / 10_000.0)
                 buy_qty = delta_value / exec_price
                 cost = buy_qty * exec_price
                 if cost > cash:
@@ -201,10 +231,10 @@ def _run_portfolio_backtest(
                 if buy_qty > 0:
                     cash -= cost
                     qty[s] += buy_qty
-                    trades.append((ts, s, "BUY", buy_qty, exec_price, "rebalance_in" if s in active else "rebalance"))
+                    trades.append((ts, s, "BUY", buy_qty, exec_price, "rebalance_in" if weights[s] > 0 else "rebalance"))
             else:
                 # sell
-                exec_price = prices[s] * (1.0 - slippage_bps / 10_000.0)
+                exec_price = fresh_prices[s] * (1.0 - slippage_bps / 10_000.0)
                 sell_qty = min(qty[s], (-delta_value) / exec_price)
                 if sell_qty > 0:
                     cash += sell_qty * exec_price
@@ -250,7 +280,12 @@ def run_backtest(payload: BacktestRunCreate, db: Session = Depends(get_db)):
         if not bars_by_symbol:
             raise ValueError("No bars returned for requested symbols/time range")
 
-        equity_points, trades = _run_portfolio_backtest(bars_by_symbol, payload.starting_cash)
+        equity_points, trades = _run_portfolio_backtest(
+            bars_by_symbol,
+            payload.starting_cash,
+            crypto_max_pct=payload.crypto_max_pct,
+            single_symbol_max_pct=payload.single_symbol_max_pct,
+        )
 
         # Persist results
         for ts, eq, cash in equity_points:
