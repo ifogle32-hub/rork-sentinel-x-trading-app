@@ -29,9 +29,11 @@ ENGINE_STATE = "TRADING"  # STARTING|TRADING|PAUSED|KILLED|ERROR
 
 from .ingest import router as ingest_router
 from .control import router as control_router
+from .backtest import router as backtest_router
 
 app.include_router(ingest_router)
 app.include_router(control_router)
+app.include_router(backtest_router)
 
 app.add_middleware(
     CORSMiddleware,

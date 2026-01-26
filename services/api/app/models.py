@@ -59,3 +59,52 @@ class PortfolioSnapshot(Base):
     equity: Mapped[float] = mapped_column(Float, default=0.0)
     cash: Mapped[float] = mapped_column(Float, default=0.0)
     pnl_day: Mapped[float] = mapped_column(Float, default=0.0)
+
+
+class BacktestStatus(str, enum.Enum):
+    running = "running"
+    complete = "complete"
+    failed = "failed"
+
+
+class BacktestRun(Base):
+    __tablename__ = "backtest_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), index=True)
+    status: Mapped[BacktestStatus] = mapped_column(Enum(BacktestStatus), default=BacktestStatus.running)
+
+    start_ts: Mapped[datetime] = mapped_column(DateTime, index=True)
+    end_ts: Mapped[datetime] = mapped_column(DateTime, index=True)
+    timeframe: Mapped[str] = mapped_column(String(40), default="1Min")
+    symbols_csv: Mapped[str] = mapped_column(String(1000), default="AAPL,MSFT,BTC/USD")
+
+    starting_cash: Mapped[float] = mapped_column(Float, default=10_000.0)
+    ending_equity: Mapped[float] = mapped_column(Float, default=0.0)
+    total_return_pct: Mapped[float] = mapped_column(Float, default=0.0)
+
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class BacktestEquityPoint(Base):
+    __tablename__ = "backtest_equity_points"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    run_id: Mapped[int] = mapped_column(Integer, index=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, index=True)
+    equity: Mapped[float] = mapped_column(Float)
+    cash: Mapped[float] = mapped_column(Float)
+
+
+class BacktestTrade(Base):
+    __tablename__ = "backtest_trades"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    run_id: Mapped[int] = mapped_column(Integer, index=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, index=True)
+    symbol: Mapped[str] = mapped_column(String(30), index=True)
+    side: Mapped[str] = mapped_column(String(10))  # BUY|SELL
+    qty: Mapped[float] = mapped_column(Float)
+    price: Mapped[float] = mapped_column(Float)
+    reason: Mapped[str] = mapped_column(String(120), default="signal")

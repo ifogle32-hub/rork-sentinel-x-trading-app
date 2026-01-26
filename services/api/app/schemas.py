@@ -117,3 +117,43 @@ class PortfolioSnapshotIn(BaseModel):
     equity: float
     cash: float
     pnl_day: float
+
+
+# Backtests
+class BacktestRunCreate(BaseModel):
+    name: str = "Portfolio Backtest"
+    symbols: List[str] = Field(default_factory=lambda: ["AAPL", "MSFT", "BTC/USD"])
+    start: datetime
+    end: datetime
+    timeframe: str = "1Min"  # 1Min|5Min|15Min|1Hour|1Day
+    starting_cash: float = Field(default=10_000.0, gt=0)
+
+
+class BacktestRunOut(BaseModel):
+    id: int
+    name: str
+    status: str
+    start_ts: datetime
+    end_ts: datetime
+    timeframe: str
+    symbols: List[str]
+    starting_cash: float
+    ending_equity: float
+    total_return_pct: float
+    error: str | None
+    created_at: datetime
+
+
+class BacktestEquityPointOut(BaseModel):
+    ts: datetime
+    equity: float
+    cash: float
+
+
+class BacktestTradeOut(BaseModel):
+    ts: datetime
+    symbol: str
+    side: str
+    qty: float
+    price: float
+    reason: str
