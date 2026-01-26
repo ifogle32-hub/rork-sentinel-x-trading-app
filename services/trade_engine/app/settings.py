@@ -17,5 +17,13 @@ class Settings(BaseSettings):
     max_concurrent_positions: int = 10
     max_orders_per_minute: int = 20
 
+    # Exposure caps (scalping/shorting)
+    max_gross_exposure_pct: float = 1.0
+    max_net_exposure_pct: float = 0.3
+
+    # Defaults
+    default_symbols_csv: str = "AAPL,MSFT,NVDA,BTC/USD,ETH/USD"
+    primary_timeframe: str = "1Min"
+
 
 settings = Settings()

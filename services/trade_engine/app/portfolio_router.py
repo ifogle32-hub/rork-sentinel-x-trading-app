@@ -17,11 +17,20 @@ class Position:
 
 
 class PortfolioRouter:
-    def __init__(self, starting_cash: float = 10_000.0, single_symbol_max_pct: float = 0.50, crypto_max_pct: float = 0.50):
+    def __init__(
+        self,
+        starting_cash: float = 10_000.0,
+        single_symbol_max_pct: float = 0.50,
+        crypto_max_pct: float = 0.50,
+        max_gross_exposure_pct: float = 1.0,
+        max_net_exposure_pct: float = 0.3,
+    ):
         self.cash = starting_cash
         self.starting_cash = starting_cash
         self.single_symbol_max_pct = single_symbol_max_pct
         self.crypto_max_pct = crypto_max_pct
+        self.max_gross_exposure_pct = max_gross_exposure_pct
+        self.max_net_exposure_pct = max_net_exposure_pct
 
         self.positions: Dict[str, Position] = {}
         self.last_price: Dict[str, float] = {}
@@ -49,6 +58,30 @@ class PortfolioRouter:
             gross += abs(pos.qty * px)
         return gross / eq
 
+    def _gross_exposure(self) -> float:
+        eq = self.equity()
+        if eq <= 0:
+            return 0.0
+        gross = 0.0
+        for sym, pos in self.positions.items():
+            px = self.last_price.get(sym)
+            if px is None:
+                continue
+            gross += abs(pos.qty * px)
+        return gross / eq
+
+    def _net_exposure(self) -> float:
+        eq = self.equity()
+        if eq <= 0:
+            return 0.0
+        net = 0.0
+        for sym, pos in self.positions.items():
+            px = self.last_price.get(sym)
+            if px is None:
+                continue
+            net += (pos.qty * px)
+        return net / eq
+
     def _symbol_exposure(self, sym: str) -> float:
         eq = self.equity()
         if eq <= 0:
@@ -74,6 +107,10 @@ class PortfolioRouter:
             return events
 
         # Risk caps
+        if self._gross_exposure() > self.max_gross_exposure_pct:
+            return events
+        if abs(self._net_exposure()) > self.max_net_exposure_pct:
+            return events
         if self._symbol_exposure(sig.symbol) > self.single_symbol_max_pct:
             return events
         if "/" in sig.symbol and self._gross_crypto_exposure() > self.crypto_max_pct:
