@@ -9,5 +9,9 @@ class Settings(BaseSettings):
     api_host: str = "0.0.0.0"
     api_port: int = 8000
 
+    # Alpaca
+    alpaca_api_key_id: str = ""
+    alpaca_api_secret_key: str = ""
+
 
 settings = Settings()

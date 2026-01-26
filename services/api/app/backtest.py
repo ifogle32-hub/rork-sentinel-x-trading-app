@@ -230,14 +230,14 @@ def run_backtest(payload: BacktestRunCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(run)
 
-    # Alpaca clients use env vars ALPACA_API_KEY_ID / ALPACA_API_SECRET_KEY
-    import os
+    # Alpaca keys come from Settings (loads .env)
+    from .settings import settings
 
-    key = os.getenv("ALPACA_API_KEY_ID", "")
-    secret = os.getenv("ALPACA_API_SECRET_KEY", "")
+    key = settings.alpaca_api_key_id
+    secret = settings.alpaca_api_secret_key
     if not key or not secret:
         run.status = BacktestStatus.failed
-        run.error = "Missing ALPACA_API_KEY_ID / ALPACA_API_SECRET_KEY in environment"
+        run.error = "Missing ALPACA_API_KEY_ID / ALPACA_API_SECRET_KEY in .env"
         db.add(run)
         db.commit()
         raise HTTPException(status_code=400, detail=run.error)
