@@ -134,18 +134,23 @@ export const [ConnectionProvider, useConnection] = createContextHook(() => {
   }, [clearTimers, fetchGovernanceHealth, scheduleRetry]);
 
   const refetchStatus = useCallback(async () => {
+    // Engine is the primary source of truth for "live" status in local/dev.
+    await fetchEngineHealth();
+
+    // Governance is optional; if it's up, also refresh it.
     if (governanceState === 'ONLINE') {
       await fetchGovernanceHealth();
-      await fetchEngineHealth();
       await fetchHeartbeat();
     }
   }, [governanceState, fetchGovernanceHealth, fetchEngineHealth, fetchHeartbeat]);
 
   useEffect(() => {
     const init = async () => {
+      // Always check engine first so Overview/Dashboard can show live data even if governance (n8n) is offline.
+      await fetchEngineHealth();
+
       const success = await fetchGovernanceHealth();
       if (success) {
-        await fetchEngineHealth();
         await fetchHeartbeat();
       } else {
         scheduleRetry();
@@ -159,6 +164,10 @@ export const [ConnectionProvider, useConnection] = createContextHook(() => {
   }, [fetchGovernanceHealth, fetchEngineHealth, fetchHeartbeat, scheduleRetry, clearTimers]);
 
   useEffect(() => {
+    // Always poll engine, even if governance is offline.
+    console.log('[Connection] Starting engine poll interval');
+    enginePollRef.current = setInterval(fetchEngineHealth, ENGINE_POLL_INTERVAL);
+
     if (governanceState === 'ONLINE') {
       console.log('[Connection] Starting governance poll interval');
       governancePollRef.current = setInterval(async () => {
@@ -168,9 +177,6 @@ export const [ConnectionProvider, useConnection] = createContextHook(() => {
           scheduleRetry();
         }
       }, GOVERNANCE_POLL_INTERVAL);
-
-      console.log('[Connection] Starting engine poll interval (background)');
-      enginePollRef.current = setInterval(fetchEngineHealth, ENGINE_POLL_INTERVAL);
 
       console.log('[Connection] Starting heartbeat poll interval');
       heartbeatPollRef.current = setInterval(fetchHeartbeat, GOVERNANCE_POLL_INTERVAL);

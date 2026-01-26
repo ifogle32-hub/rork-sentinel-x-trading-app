@@ -24,8 +24,14 @@ from .ws import hub, WSMessage
 
 app = FastAPI(title="Agent INS API", version="0.1.0")
 
+# --- Minimal runtime state (v0). Later this moves to DB + signed operator actions.
+ENGINE_STATE = "TRADING"  # STARTING|TRADING|PAUSED|KILLED|ERROR
+
 from .ingest import router as ingest_router
+from .control import router as control_router
+
 app.include_router(ingest_router)
+app.include_router(control_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -122,7 +128,7 @@ def rork_status(db: Session = Depends(get_db)):
     mode = "SHADOW" if (snap and snap.mode == RunMode.shadow) or not snap else "LIVE"
 
     return BotStatusOut(
-        state="TRADING" if mode == "SHADOW" else "PAUSED",
+        state=ENGINE_STATE,
         mode=mode,
         brokers=[
             BrokerStatusOut(
