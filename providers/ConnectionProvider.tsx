@@ -13,6 +13,9 @@ export const [ConnectionProvider, useConnection] = createContextHook(() => {
   const [engineState, setEngineState] = useState<EngineConnectionState>('EXPECTED_OFFLINE');
   const [governanceStatus, setGovernanceStatus] = useState<GovernanceStatus | null>(null);
   const [engineStatus, setEngineStatus] = useState<BotStatus | null>(null);
+  const [shadowSignals, setShadowSignals] = useState<any[]>([]);
+  const [shadowOrders, setShadowOrders] = useState<any[]>([]);
+  const [shadowPositions, setShadowPositions] = useState<any[]>([]);
   const [heartbeat, setHeartbeat] = useState<GovernanceHeartbeat | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
   const [lastConnectedAt, setLastConnectedAt] = useState<Date | null>(null);
@@ -216,6 +219,28 @@ export const [ConnectionProvider, useConnection] = createContextHook(() => {
                 };
               });
             }
+
+            if (msg?.type === 'shadow.signal') {
+              const s = msg?.data?.signal;
+              if (s) {
+                setShadowSignals((prev) => [s, ...prev].slice(0, 200));
+              }
+            }
+
+            if (msg?.type === 'shadow.order') {
+              const o = msg?.data?.order;
+              if (o) {
+                setShadowOrders((prev) => [o, ...prev].slice(0, 200));
+              }
+            }
+
+            if (msg?.type === 'shadow.positions') {
+              const ps = msg?.data?.positions;
+              if (Array.isArray(ps)) {
+                setShadowPositions(ps);
+                setEngineStatus((prev) => (prev ? { ...prev, openPositions: ps.length } : prev));
+              }
+            }
           } catch {
             // ignore
           }
@@ -299,6 +324,9 @@ export const [ConnectionProvider, useConnection] = createContextHook(() => {
     heartbeat,
     status,
     engineStatus,
+    shadowSignals,
+    shadowOrders,
+    shadowPositions,
     lastError,
     lastConnectedAt,
     retryCount,

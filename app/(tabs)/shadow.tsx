@@ -489,7 +489,7 @@ const dossierStyles = StyleSheet.create({
 
 export default function ShadowScreen() {
   const insets = useSafeAreaInsets();
-  const { governanceState, engineState } = useConnection();
+  const { governanceState, engineState, shadowSignals, shadowOrders, shadowPositions } = useConnection();
   const [strategies, setStrategies] = useState<N8NShadowStrategy[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -503,6 +503,9 @@ export default function ShadowScreen() {
 
   const isGovernanceOnline = governanceState === 'ONLINE';
   const isEngineOffline = engineState === 'EXPECTED_OFFLINE' || engineState === 'OFFLINE';
+
+  // For live feed, treat engine online if we have any shadow events streaming.
+  const hasLiveShadow = (shadowSignals?.length || shadowOrders?.length || shadowPositions?.length) > 0;
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -569,28 +572,72 @@ export default function ShadowScreen() {
     return date.toLocaleDateString();
   };
 
-  const renderGovernanceOffline = () => (
-    <View style={styles.container}>
-      <LinearGradient
-        colors={['#0A0A12', '#050508', '#080810']}
-        style={StyleSheet.absoluteFill}
-      />
-      <View style={[styles.glowOrb, styles.glowOrb1]} />
-      <View style={styles.centerContainer}>
-        <Ghost color={Colors.textMuted} size={64} />
-        <Text style={styles.offlineTitle}>GOVERNANCE OFFLINE</Text>
-        <Text style={styles.offlineSubtitle}>
-          Connect to n8n governance layer to view shadow strategies
-        </Text>
-        <TouchableOpacity style={styles.retryButton} onPress={onRefresh}>
-          <RefreshCw color={Colors.text} size={16} />
-          <Text style={styles.retryText}>Retry</Text>
-        </TouchableOpacity>
-      </View>
+  const renderLiveFeed = () => (
+    <View style={{ gap: 12, marginBottom: 16 }}>
+      <GlassCard variant="elevated">
+        <Text style={styles.sectionTitle}>LIVE SHADOW POSITIONS</Text>
+        <GlassDivider />
+        {shadowPositions?.length ? (
+          shadowPositions.slice(0, 10).map((p: any) => (
+            <View key={p.symbol} style={styles.liveRow}>
+              <Text style={styles.liveRowLeft}>{p.symbol}</Text>
+              <Text style={styles.liveRowMid}>{p.side} {Number(p.size).toFixed(4)}</Text>
+              <Text style={[styles.liveRowRight, { color: (p.pnl ?? 0) >= 0 ? Colors.success : Colors.error }]}>
+                {(p.pnl ?? 0) >= 0 ? '+' : ''}{Number(p.pnl ?? 0).toFixed(2)} ({Number(p.pnlPercent ?? 0).toFixed(2)}%)
+              </Text>
+            </View>
+          ))
+        ) : (
+          <Text style={styles.liveEmpty}>No open shadow positions yet.</Text>
+        )}
+      </GlassCard>
+
+      <GlassCard variant="primary">
+        <Text style={styles.sectionTitle}>LIVE SHADOW SIGNALS</Text>
+        <GlassDivider />
+        {shadowSignals?.length ? (
+          shadowSignals.slice(0, 20).map((s: any) => (
+            <View key={s.id} style={styles.liveRow}>
+              <Text style={styles.liveRowLeft}>{s.symbol}</Text>
+              <Text style={[styles.liveRowMid, { color: s.direction === 'BUY' ? Colors.success : Colors.error }]}>
+                {s.direction}  conf {Number(s.confidenceScore ?? 0).toFixed(2)}
+              </Text>
+              <Text style={styles.liveRowRight}>{formatTime(s.timestamp)}</Text>
+            </View>
+          ))
+        ) : (
+          <Text style={styles.liveEmpty}>Waiting for shadow signals…</Text>
+        )}
+      </GlassCard>
+
+      <GlassCard variant="subtle">
+        <Text style={styles.sectionTitle}>EXECUTED SIMULATED ORDERS</Text>
+        <GlassDivider />
+        {shadowOrders?.length ? (
+          shadowOrders.slice(0, 20).map((o: any) => (
+            <View key={o.id} style={styles.liveRow}>
+              <Text style={styles.liveRowLeft}>{o.symbol}</Text>
+              <Text style={[styles.liveRowMid, { color: o.side === 'BUY' ? Colors.success : Colors.error }]}>
+                {o.side} {Number(o.qty).toFixed(4)} @ {Number(o.price).toFixed(2)}
+              </Text>
+              <Text style={styles.liveRowRight}>{formatTime(o.timestamp)}</Text>
+            </View>
+          ))
+        ) : (
+          <Text style={styles.liveEmpty}>No executed simulated orders yet.</Text>
+        )}
+      </GlassCard>
+
+      {!isGovernanceOnline && (
+        <GlassCard variant="subtle">
+          <View style={styles.engineOfflineContent}>
+            <Ghost color={Colors.textMuted} size={14} />
+            <Text style={styles.engineOfflineText}>Governance offline — showing engine realtime shadow feed.</Text>
+          </View>
+        </GlassCard>
+      )}
     </View>
   );
-
-  if (!isGovernanceOnline) return renderGovernanceOffline();
 
   return (
     <View style={styles.container}>
@@ -691,6 +738,8 @@ export default function ShadowScreen() {
               />
             }
           >
+            {renderLiveFeed()}
+
             <GlassCard style={styles.summaryBar} variant="elevated">
               <View style={styles.summaryItem}>
                 <Text style={styles.summaryValue}>{strategies.length}</Text>
@@ -1040,6 +1089,46 @@ const styles = StyleSheet.create({
     marginTop: 4,
     textTransform: 'uppercase' as const,
     letterSpacing: 0.5,
+  },
+
+  sectionTitle: {
+    fontSize: 11,
+    fontWeight: '700' as const,
+    color: Colors.textMuted,
+    letterSpacing: 1.5,
+    marginBottom: 8,
+  },
+
+  liveRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.05)',
+  },
+  liveRowLeft: {
+    fontSize: 12,
+    color: Colors.text,
+    fontWeight: '700' as const,
+    width: 80,
+  },
+  liveRowMid: {
+    flex: 1,
+    fontSize: 12,
+    color: Colors.textSecondary,
+    fontWeight: '600' as const,
+  },
+  liveRowRight: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    fontWeight: '600' as const,
+    marginLeft: 8,
+  },
+  liveEmpty: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    paddingVertical: 10,
   },
   footerDisclaimer: {
     flexDirection: 'row',

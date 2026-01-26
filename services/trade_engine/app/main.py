@@ -8,6 +8,7 @@ import httpx
 
 from .settings import settings
 from .governance import governance_loop
+from .shadow_simulator import ShadowSim
 
 
 async def publish_event(event_type: str, data: dict) -> None:
@@ -17,23 +18,31 @@ async def publish_event(event_type: str, data: dict) -> None:
 
 
 async def run_loop() -> None:
-    # v0 skeleton: generates synthetic portfolio snapshots in SHADOW mode.
-    # Includes a deterministic governance loop that can pause the engine on risk breach.
+    # Shadow engine: emits live signals, simulated orders, and position updates.
+    # Includes deterministic governance loop (separate task) that can pause/resume based on risk.
+
     equity0 = 10_000.0
-    equity = equity0
     cash = equity0
     pnl_day = 0.0
 
+    # Symbols to simulate; later this is driven from StrategyConfig.
+    sim = ShadowSim(symbols=["AAPL", "MSFT", "NVDA", "BTC/USD", "ETH/USD"])
+
+    base = settings.api_url.rstrip("/")
+
     async with httpx.AsyncClient(timeout=5.0) as client:
         while True:
-            # pretend to trade
-            delta = random.uniform(-25, 35)
-            pnl_day += delta
+            # Create live shadow events
+            signals, orders, positions = sim.step()
+
+            # Update pnl_day from positions (unrealized, rough)
+            pnl_day = sum(p.pnl for p in positions)
             equity = equity0 + pnl_day
 
+            # Portfolio snapshot (drives Overview/Dashboard)
             try:
                 await client.post(
-                    f"{settings.api_url.rstrip('/')}/ingest/portfolio",
+                    f"{base}/ingest/portfolio",
                     json={
                         "ts": datetime.now(timezone.utc).isoformat(),
                         "mode": settings.run_mode,
@@ -44,6 +53,25 @@ async def run_loop() -> None:
                 )
             except Exception:
                 pass
+
+            # Stream signals/orders/positions to API for WS broadcast
+            for s in signals:
+                try:
+                    await client.post(f"{base}/shadow/ingest/signal", json=s.__dict__)
+                except Exception:
+                    pass
+
+            for o in orders:
+                try:
+                    await client.post(f"{base}/shadow/ingest/order", json=o.__dict__)
+                except Exception:
+                    pass
+
+            for p in positions:
+                try:
+                    await client.post(f"{base}/shadow/ingest/position", json=p.__dict__)
+                except Exception:
+                    pass
 
             await asyncio.sleep(2)
 
