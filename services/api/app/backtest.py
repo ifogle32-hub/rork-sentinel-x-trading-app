@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from alpaca.data.historical import CryptoHistoricalDataClient, StockHistoricalDataClient
 from alpaca.data.requests import CryptoBarsRequest, StockBarsRequest
-from alpaca.data.timeframe import TimeFrame
+from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
 
 from .db import get_db
 from .models import BacktestEquityPoint, BacktestRun, BacktestStatus, BacktestTrade
@@ -26,8 +26,8 @@ router = APIRouter(prefix="/backtest", tags=["backtest"])
 def _tf(tf: str) -> TimeFrame:
     m = {
         "1Min": TimeFrame.Minute,
-        "5Min": TimeFrame(5, TimeFrame.Unit.Minute),
-        "15Min": TimeFrame(15, TimeFrame.Unit.Minute),
+        "5Min": TimeFrame(5, TimeFrameUnit.Minute),
+        "15Min": TimeFrame(15, TimeFrameUnit.Minute),
         "1Hour": TimeFrame.Hour,
         "1Day": TimeFrame.Day,
     }
