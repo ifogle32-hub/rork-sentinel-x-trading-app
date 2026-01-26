@@ -42,3 +42,8 @@ yarn-error.*
 
 .env
 rork-eslint.config.js
+
+# Python
+__pycache__/
+*.pyc
+.venv/
