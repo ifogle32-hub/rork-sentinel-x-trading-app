@@ -39,8 +39,8 @@ import {
   GovernanceGuardrails,
 } from '@/types/bot';
 
-const SENTINEL_BASE_URL = 'http://10.0.0.23:8000';
-const N8N_BASE_URL = 'http://10.0.0.23:5678/webhook';
+const SENTINEL_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000';
+const N8N_BASE_URL = process.env.EXPO_PUBLIC_N8N_URL || 'http://localhost:5678/webhook';
 const REQUEST_TIMEOUT = 10000;
 
 export const getConfig = () => ({

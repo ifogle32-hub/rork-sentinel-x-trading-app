@@ -1,0 +1,13 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: agentins
+      POSTGRES_USER: agentins
+      POSTGRES_PASSWORD: agentins
+    ports:
+      - "5432:5432"
+    volumes:
+      - agentins_pg:/var/lib/postgresql/data
+volumes:
+  agentins_pg:

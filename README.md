@@ -1,3 +1,43 @@
+# Sentinel X / Agent INS
+
+This repo contains the **Rork (Expo + React Native)** app plus the start of the **Agent INS backend + trade engine**.
+
+## Local development (full stack)
+### 1) Start Postgres
+```bash
+docker compose up -d db
+```
+
+### 2) Create env
+```bash
+cp .env.example .env
+```
+Set `EXPO_PUBLIC_API_URL` for the mobile app, and Alpaca keys when ready.
+
+### 3) Run API (FastAPI)
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r services/api/requirements.txt
+uvicorn app.main:app --reload --port 8000 --app-dir services/api
+```
+
+### 4) Run trade engine (shadow demo)
+In another terminal:
+```bash
+source .venv/bin/activate
+pip install -r services/trade_engine/requirements.txt
+python3 services/trade_engine/app/main.py
+```
+
+### 5) Run mobile app
+```bash
+bun i
+bun run start
+```
+
+---
+
 # Welcome to your Rork app
 
 ## Project info
