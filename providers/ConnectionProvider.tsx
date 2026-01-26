@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import createContextHook from '@nkzw/create-context-hook';
-import { api } from '@/lib/api';
+import { api, getConfig } from '@/lib/api';
 import { BotStatus, GovernanceStatus, GovernanceConnectionState, EngineConnectionState, GovernanceHeartbeat } from '@/types/bot';
 
 const RETRY_INTERVAL = 5000;
@@ -23,6 +23,9 @@ export const [ConnectionProvider, useConnection] = createContextHook(() => {
   const enginePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const heartbeatPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const wsRef = useRef<WebSocket | null>(null);
+  const wsPingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const clearTimers = useCallback(() => {
     if (retryTimeoutRef.current) {
       clearTimeout(retryTimeoutRef.current);
@@ -39,6 +42,10 @@ export const [ConnectionProvider, useConnection] = createContextHook(() => {
     if (heartbeatPollRef.current) {
       clearInterval(heartbeatPollRef.current);
       heartbeatPollRef.current = null;
+    }
+    if (wsPingRef.current) {
+      clearInterval(wsPingRef.current);
+      wsPingRef.current = null;
     }
   }, []);
 
@@ -155,11 +162,88 @@ export const [ConnectionProvider, useConnection] = createContextHook(() => {
       } else {
         scheduleRetry();
       }
+
+      // Start realtime stream for shadow trading updates.
+      try {
+        const { sentinelBaseUrl } = getConfig();
+        const wsUrl = sentinelBaseUrl.replace(/^http/, 'ws') + '/ws/stream';
+        console.log('[Connection] Connecting WS stream:', wsUrl);
+
+        const ws = new WebSocket(wsUrl);
+        wsRef.current = ws;
+
+        ws.onopen = () => {
+          console.log('[Connection] WS connected');
+          // Keepalive so server doesn't block on receive_text.
+          wsPingRef.current = setInterval(() => {
+            try {
+              ws.send('ping');
+            } catch {}
+          }, 15000);
+        };
+
+        ws.onmessage = (evt) => {
+          try {
+            const msg = JSON.parse(String(evt.data));
+            if (msg?.type === 'portfolio.snapshot') {
+              const d = msg.data || {};
+              setEngineState('ONLINE');
+              setEngineStatus((prev) => {
+                const equity = Number(d.equity ?? prev?.equity ?? 0);
+                const dailyPnL = Number(d.pnl_day ?? prev?.dailyPnL ?? 0);
+                const base = 10000;
+                const dailyPnLPercent = (dailyPnL / base) * 100;
+                return {
+                  ...(prev || {
+                    state: 'TRADING',
+                    mode: 'SHADOW',
+                    brokers: [],
+                    equity: 0,
+                    dailyPnL: 0,
+                    dailyPnLPercent: 0,
+                    openPositions: 0,
+                    killSwitchArmed: true,
+                    lastHeartbeat: new Date().toISOString(),
+                    uptime: 0,
+                    tradingWindowActive: true,
+                    shadowTradingEnabled: true,
+                  }),
+                  mode: 'SHADOW',
+                  equity,
+                  dailyPnL,
+                  dailyPnLPercent,
+                  lastHeartbeat: String(d.ts || prev?.lastHeartbeat || new Date().toISOString()),
+                };
+              });
+            }
+          } catch {
+            // ignore
+          }
+        };
+
+        ws.onerror = (err) => {
+          console.log('[Connection] WS error:', err);
+        };
+
+        ws.onclose = () => {
+          console.log('[Connection] WS closed');
+          if (wsPingRef.current) {
+            clearInterval(wsPingRef.current);
+            wsPingRef.current = null;
+          }
+        };
+      } catch (e) {
+        console.log('[Connection] WS init failed:', e);
+      }
     };
     init();
 
     return () => {
       clearTimers();
+      try {
+        wsRef.current?.close();
+      } catch {}
+      wsRef.current = null;
     };
   }, [fetchGovernanceHealth, fetchEngineHealth, fetchHeartbeat, scheduleRetry, clearTimers]);
 
