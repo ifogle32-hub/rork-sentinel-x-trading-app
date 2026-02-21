@@ -11,6 +11,7 @@ import { GlobalStateProvider } from "@/providers/GlobalStateProvider";
 import { OperationalModeProvider } from "@/providers/OperationalModeProvider";
 import { AdaptiveGlassProvider } from "@/providers/AdaptiveGlassProvider";
 import { CommandFocusProvider } from "@/providers/CommandFocusProvider";
+import { EngineMonitorProvider } from "@/providers/EngineMonitorProvider";
 import CommandFocusOverlay from "@/components/CommandFocusOverlay";
 
 SplashScreen.preventAutoHideAsync();
@@ -45,11 +46,13 @@ export default function RootLayout() {
           <OperationalModeProvider>
             <AdaptiveGlassProvider>
               <CommandFocusProvider>
-                <GestureHandlerRootView style={{ flex: 1 }}>
-                  <StatusBar barStyle="light-content" backgroundColor={Colors.background} />
-                  <RootLayoutNav />
-                  <CommandFocusOverlay />
-                </GestureHandlerRootView>
+                <EngineMonitorProvider>
+                  <GestureHandlerRootView style={{ flex: 1 }}>
+                    <StatusBar barStyle="light-content" backgroundColor={Colors.background} />
+                    <RootLayoutNav />
+                    <CommandFocusOverlay />
+                  </GestureHandlerRootView>
+                </EngineMonitorProvider>
               </CommandFocusProvider>
             </AdaptiveGlassProvider>
           </OperationalModeProvider>

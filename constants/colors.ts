@@ -11,9 +11,14 @@ export default {
   textSecondary: "#A2A2AE",
   textMuted: "#676774",
 
-  success: "#A2A2AE",
-  warning: "#E51C33",
-  error: "#E51C33",
+  success: "#34D399",
+  warning: "#FBBF24",
+  error: "#EF4444",
+
+  profit: "#34D399",
+  loss: "#EF4444",
+  shadow: "#FBBF24",
+  offline: "#676774",
 
   border: "#1B1B22",
   borderActive: "#B1001A",

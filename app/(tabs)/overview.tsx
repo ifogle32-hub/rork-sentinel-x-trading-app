@@ -1,308 +1,415 @@
 import { StyleSheet, Text, View, ScrollView, RefreshControl, Animated } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { 
-  Activity, 
-  Wifi, 
+import {
+  Activity,
+  Wifi,
   WifiOff,
   TrendingUp,
   TrendingDown,
   DollarSign,
   Clock,
-  Shield,
-  Server,
   Eye,
-  AlertTriangle,
   Cpu,
-  Radio
+  Radio,
+  BarChart3,
+  Target,
+  Gauge,
+  BookOpen,
+  Trophy,
+  ArrowUpRight,
+  ArrowDownRight,
+  Minus,
 } from 'lucide-react-native';
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Colors from '@/constants/colors';
-import { SystemState, TradingMode } from '@/types/bot';
-import { useConnection } from '@/providers/ConnectionProvider';
-import StatusBar from '@/components/StatusBar';
+import { useEngineMonitor } from '@/providers/EngineMonitorProvider';
 import GlassCard, { GlassBadge, GlassDivider } from '@/components/GlassCard';
-import GovernanceBrainStatus from '@/components/GovernanceBrainStatus';
 
-const getStateColor = (state?: SystemState) => {
-  switch (state) {
-    case 'TRADING': return Colors.success;
-    case 'PAUSED': return Colors.warning;
-    case 'STARTING': return Colors.warning;
-    case 'KILLED': return Colors.error;
-    case 'ERROR': return Colors.error;
-    default: return Colors.textMuted;
-  }
-};
-
-const getModeColor = (mode?: TradingMode) => {
-  switch (mode) {
-    case 'LIVE': return Colors.error;
-    case 'PAPER': return Colors.warning;
-    case 'SHADOW': return Colors.textSecondary;
-    default: return Colors.textMuted;
-  }
-};
-
-const formatUptime = (seconds?: number) => {
-  if (seconds === undefined || seconds === null) return '—';
-  const hours = Math.floor(seconds / 3600);
-  const mins = Math.floor((seconds % 3600) / 60);
-  if (hours > 0) return `${hours}h ${mins}m`;
-  return `${mins}m`;
-};
-
-const formatCurrency = (value?: number) => {
+const formatCurrency = (value?: number | null) => {
   if (value === undefined || value === null) return '—';
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(value);
+};
+
+const formatPercent = (value?: number | null) => {
+  if (value === undefined || value === null) return '—';
+  return `${(value * 100).toFixed(1)}%`;
+};
+
+const formatNumber = (value?: number | null, decimals = 4) => {
+  if (value === undefined || value === null) return '—';
+  return value.toFixed(decimals);
+};
+
+const getSignalIcon = (signal?: string) => {
+  switch (signal) {
+    case 'LONG': return ArrowUpRight;
+    case 'SHORT': return ArrowDownRight;
+    default: return Minus;
+  }
+};
+
+const getSignalColor = (signal?: string) => {
+  switch (signal) {
+    case 'LONG': return Colors.profit;
+    case 'SHORT': return Colors.loss;
+    default: return Colors.textMuted;
+  }
+};
+
+const getPnlColor = (value?: number | null) => {
+  if (value === undefined || value === null) return Colors.textMuted;
+  if (value > 0) return Colors.profit;
+  if (value < 0) return Colors.loss;
+  return Colors.textSecondary;
+};
+
+const getOutcomeColor = (outcome?: string) => {
+  switch (outcome) {
+    case 'WIN': return Colors.profit;
+    case 'LOSS': return Colors.loss;
+    default: return Colors.textMuted;
+  }
 };
 
 export default function OverviewScreen() {
   const insets = useSafeAreaInsets();
-  const [refreshing, setRefreshing] = useState(false);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  
-  const { connectionState, status, refetchStatus } = useConnection();
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  const {
+    connectionState,
+    status,
+    heartbeat,
+    portfolio,
+    metrics,
+    strategy,
+    heartbeatAge,
+    lastError,
+    refresh,
+  } = useEngineMonitor();
+
   const isOnline = connectionState === 'ONLINE';
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
       toValue: 1,
-      duration: 400,
+      duration: 500,
       useNativeDriver: true,
     }).start();
   }, [fadeAnim]);
 
+  useEffect(() => {
+    if (isOnline) {
+      const loop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, {
+            toValue: 0.4,
+            duration: 1200,
+            useNativeDriver: true,
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 1,
+            duration: 1200,
+            useNativeDriver: true,
+          }),
+        ])
+      );
+      loop.start();
+      return () => loop.stop();
+    } else {
+      pulseAnim.setValue(1);
+    }
+  }, [isOnline, pulseAnim]);
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refetchStatus();
+    await refresh();
     setRefreshing(false);
-  }, [refetchStatus]);
+  }, [refresh]);
 
-  const dailyPnL = isOnline ? (status?.dailyPnL ?? 0) : 0;
-  const dailyPnLPercent = isOnline ? (status?.dailyPnLPercent ?? 0) : 0;
+  const SignalIcon = getSignalIcon(strategy?.last_signal);
 
   return (
     <View style={styles.container}>
       <LinearGradient
-        colors={['#0A0A12', '#050508', '#080810']}
+        colors={['#050508', '#0A0A10', '#060608']}
         style={StyleSheet.absoluteFill}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       />
-      
-      <View style={[styles.glowOrb, styles.glowOrb1]} />
-      <View style={[styles.glowOrb, styles.glowOrb2]} />
 
       <Animated.View style={[styles.content, { paddingTop: insets.top, opacity: fadeAnim }]}>
         <View style={styles.header}>
           <View style={styles.headerLeft}>
             <View style={styles.logoContainer}>
-              <Activity size={24} color={Colors.primary} strokeWidth={2.5} />
+              <Text style={styles.logoX}>X</Text>
+              {isOnline && (
+                <Animated.View style={[styles.logoPulse, { opacity: pulseAnim }]} />
+              )}
             </View>
             <View>
               <Text style={styles.title}>SENTINEL X</Text>
-              <Text style={styles.subtitle}>Mobile Monitor</Text>
+              <Text style={styles.subtitle}>v0.1 — Monitor Only</Text>
             </View>
           </View>
-          <GlassBadge color={Colors.primary}>
+          <GlassBadge color={isOnline ? Colors.profit : Colors.offline}>
             <View style={styles.badgeContent}>
-              <Eye size={12} color={Colors.primary} />
-              <Text style={styles.monitorBadgeText}>MONITOR</Text>
+              <Eye size={11} color={isOnline ? Colors.profit : Colors.offline} />
+              <Text style={[styles.monitorBadgeText, { color: isOnline ? Colors.profit : Colors.offline }]}>
+                READ-ONLY
+              </Text>
             </View>
           </GlassBadge>
         </View>
 
-        <View style={styles.safetyBanner}>
-          <LinearGradient
-            colors={[Colors.warning + '15', Colors.warning + '08']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={StyleSheet.absoluteFill}
-          />
-          <AlertTriangle size={14} color={Colors.warning} />
-          <Text style={styles.safetyBannerText}>MONITORING & FUNDING ONLY — NO TRADING CONTROL</Text>
-        </View>
-
-        <StatusBar />
-
-        <GovernanceBrainStatus />
-
-        <ScrollView 
+        <ScrollView
           style={styles.scrollContent}
           showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollInner}
           refreshControl={
-            <RefreshControl 
-              refreshing={refreshing} 
+            <RefreshControl
+              refreshing={refreshing}
               onRefresh={onRefresh}
               tintColor={Colors.primary}
             />
           }
         >
-          <GlassCard style={styles.stateCard} variant="elevated">
-            <View style={styles.stateHeader}>
-              <View style={styles.stateIndicator}>
-                <View style={[styles.stateDot, { backgroundColor: isOnline ? getStateColor(status?.state) : Colors.textMuted }]}>
-                  <View style={[styles.stateDotInner, { backgroundColor: isOnline ? getStateColor(status?.state) : Colors.textMuted }]} />
+          <GlassCard style={styles.statusBar} variant="elevated">
+            <View style={styles.statusRow}>
+              <View style={styles.statusItem}>
+                <Text style={styles.statusLabel}>ENGINE</Text>
+                <View style={styles.statusValueRow}>
+                  <View style={[styles.statusDot, { backgroundColor: isOnline ? Colors.profit : Colors.offline }]} />
+                  <Text style={[styles.statusValue, { color: isOnline ? Colors.profit : Colors.offline }]}>
+                    {isOnline ? 'ONLINE' : 'OFFLINE'}
+                  </Text>
                 </View>
-                <Text style={[styles.stateText, { color: isOnline ? getStateColor(status?.state) : Colors.textMuted }]}>
-                  {isOnline ? (status?.state || 'UNKNOWN') : 'OFFLINE'}
+              </View>
+
+              <View style={styles.statusDivider} />
+
+              <View style={styles.statusItem}>
+                <Text style={styles.statusLabel}>MODE</Text>
+                <Text style={[styles.statusValue, { color: Colors.shadow }]}>
+                  {isOnline ? (status?.mode ?? 'SHADOW') : '—'}
                 </Text>
               </View>
-              <View style={[styles.modeBadge, { borderColor: isOnline ? getModeColor(status?.mode) : Colors.textMuted }]}>
-                <Text style={[styles.modeText, { color: isOnline ? getModeColor(status?.mode) : Colors.textMuted }]}>
-                  {isOnline ? (status?.mode || 'N/A') : '—'}
+
+              <View style={styles.statusDivider} />
+
+              <View style={styles.statusItem}>
+                <Text style={styles.statusLabel}>GOVERNANCE</Text>
+                <Text style={styles.statusValueSmall}>
+                  {isOnline ? (status?.governance ?? 'Standalone v0.1') : '—'}
                 </Text>
               </View>
-            </View>
 
-            <GlassDivider />
+              <View style={styles.statusDivider} />
 
-            <View style={styles.brokerRow}>
-              {isOnline && status?.brokers?.length ? (
-                status.brokers.map((broker) => (
-                  <View key={broker.id} style={styles.brokerChip}>
-                    {broker.connected ? (
-                      <Wifi size={12} color={Colors.success} />
-                    ) : (
-                      <WifiOff size={12} color={Colors.error} />
-                    )}
-                    <Text style={styles.brokerName}>{broker.name}</Text>
-                  </View>
-                ))
-              ) : (
-                <View style={styles.brokerChip}>
-                  <Server size={12} color={Colors.textMuted} />
-                  <Text style={styles.brokerName}>{isOnline ? 'No brokers' : '—'}</Text>
+              <View style={styles.statusItem}>
+                <Text style={styles.statusLabel}>HEARTBEAT</Text>
+                <View style={styles.statusValueRow}>
+                  <Radio size={10} color={isOnline ? Colors.profit : Colors.offline} />
+                  <Text style={[styles.statusValue, { color: isOnline ? Colors.text : Colors.offline }]}>
+                    {heartbeatAge !== null ? `${heartbeatAge}s` : '—'}
+                  </Text>
                 </View>
-              )}
+              </View>
             </View>
           </GlassCard>
 
-          <View style={styles.sectionHeader}>
-            <Cpu size={14} color={Colors.textMuted} />
-            <Text style={styles.sectionTitle}>ENGINE STATUS</Text>
-          </View>
-
-          <GlassCard style={styles.engineCard} variant="primary">
-            <View style={styles.engineRow}>
-              <Text style={styles.engineLabel}>Loop Tick</Text>
-              <View style={styles.engineValue}>
-                <Radio size={12} color={isOnline ? Colors.success : Colors.textMuted} />
-                <Text style={[styles.engineValueText, { color: isOnline ? Colors.success : Colors.textMuted }]}>
-                  {isOnline ? 'LIVE' : '—'}
-                </Text>
+          {!isOnline && (
+            <GlassCard style={styles.offlineCard} variant="subtle">
+              <WifiOff size={28} color={Colors.offline} />
+              <Text style={styles.offlineTitle}>Engine Offline — Awaiting Heartbeat</Text>
+              <Text style={styles.offlineSubtitle}>
+                {lastError ?? 'Connecting to local engine at http://10.0.0.23:8000'}
+              </Text>
+              <View style={styles.offlinePulseRow}>
+                <Animated.View style={[styles.offlinePulseDot, { opacity: pulseAnim }]} />
+                <Text style={styles.offlinePulseText}>Polling every 3s</Text>
               </View>
-            </View>
-            <View style={styles.engineRow}>
-              <Text style={styles.engineLabel}>Heartbeat Age</Text>
-              <Text style={styles.engineValueText}>
-                {isOnline && status?.lastHeartbeat ? `${Math.floor((Date.now() - new Date(status.lastHeartbeat).getTime()) / 1000)}s` : '—'}
-              </Text>
-            </View>
-            <View style={styles.engineRow}>
-              <Text style={styles.engineLabel}>Trading Window</Text>
-              <Text style={[styles.engineValueText, { color: isOnline && status?.tradingWindowActive ? Colors.success : Colors.textMuted }]}>
-                {isOnline ? (status?.tradingWindowActive ? 'ACTIVE' : 'CLOSED') : '—'}
-              </Text>
-            </View>
-            <View style={[styles.engineRow, styles.lastRow]}>
-              <Text style={styles.engineLabel}>Shadow Mode</Text>
-              <Text style={[styles.engineValueText, { color: isOnline && status?.shadowTradingEnabled ? Colors.primary : Colors.textMuted }]}>
-                {isOnline ? (status?.shadowTradingEnabled ? 'ENABLED' : 'DISABLED') : '—'}
-              </Text>
-            </View>
-          </GlassCard>
-
-          <View style={styles.sectionHeader}>
-            <DollarSign size={14} color={Colors.textMuted} />
-            <Text style={styles.sectionTitle}>PORTFOLIO (SIMULATED)</Text>
-          </View>
-
-          <View style={styles.metricsGrid}>
-            <GlassCard style={styles.metricCard} variant="subtle">
-              <Text style={styles.metricLabel}>EQUITY</Text>
-              <Text style={styles.metricValue}>
-                {isOnline ? formatCurrency(status?.equity) : '—'}
-              </Text>
             </GlassCard>
-            <GlassCard style={styles.metricCard} variant="subtle">
-              <Text style={styles.metricLabel}>DAILY P&L</Text>
-              {isOnline ? (
-                <>
-                  <View style={styles.pnlRow}>
-                    {dailyPnL >= 0 ? (
-                      <TrendingUp size={16} color={Colors.success} />
-                    ) : (
-                      <TrendingDown size={16} color={Colors.error} />
-                    )}
-                    <Text style={[
-                      styles.metricValue,
-                      { color: dailyPnL >= 0 ? Colors.success : Colors.error }
-                    ]}>
-                      {dailyPnL >= 0 ? '+' : ''}{formatCurrency(dailyPnL)}
+          )}
+
+          {isOnline && (
+            <>
+              <View style={styles.sectionHeader}>
+                <Cpu size={13} color={Colors.textMuted} />
+                <Text style={styles.sectionTitle}>ENGINE</Text>
+              </View>
+
+              <GlassCard style={styles.engineCard} variant="primary">
+                <View style={styles.engineGrid}>
+                  <View style={styles.engineCell}>
+                    <Text style={styles.engineLabel}>Timeframe</Text>
+                    <Text style={styles.engineValue}>{strategy?.timeframe ?? '—'}</Text>
+                  </View>
+                  <View style={styles.engineCell}>
+                    <Text style={styles.engineLabel}>Last Signal</Text>
+                    <View style={styles.signalRow}>
+                      <SignalIcon size={16} color={getSignalColor(strategy?.last_signal)} />
+                      <Text style={[styles.engineValue, { color: getSignalColor(strategy?.last_signal) }]}>
+                        {strategy?.last_signal ?? '—'}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.engineCell}>
+                    <Text style={styles.engineLabel}>Confidence</Text>
+                    <View style={styles.confidenceContainer}>
+                      <Text style={styles.engineValueLarge}>
+                        {strategy?.confidence !== undefined ? `${(strategy.confidence * 100).toFixed(0)}%` : '—'}
+                      </Text>
+                      {strategy?.confidence !== undefined && (
+                        <View style={styles.confidenceBar}>
+                          <View
+                            style={[
+                              styles.confidenceFill,
+                              {
+                                width: `${Math.min(strategy.confidence * 100, 100)}%` as `${number}%`,
+                                backgroundColor: strategy.confidence >= 0.7 ? Colors.profit : strategy.confidence >= 0.4 ? Colors.shadow : Colors.loss,
+                              },
+                            ]}
+                          />
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                  <View style={styles.engineCell}>
+                    <Text style={styles.engineLabel}>Adaptive Threshold</Text>
+                    <Text style={styles.engineValue}>
+                      {formatNumber(strategy?.adaptive_threshold)}
                     </Text>
                   </View>
-                  <Text style={[
-                    styles.metricPercent,
-                    { color: dailyPnLPercent >= 0 ? Colors.success : Colors.error }
-                  ]}>
-                    {dailyPnLPercent >= 0 ? '+' : ''}{dailyPnLPercent.toFixed(2)}%
+                  <View style={[styles.engineCell, styles.engineCellFull]}>
+                    <Text style={styles.engineLabel}>Current Multiplier</Text>
+                    <Text style={styles.engineValue}>
+                      {formatNumber(strategy?.current_multiplier, 2)}
+                    </Text>
+                  </View>
+                </View>
+              </GlassCard>
+
+              <View style={styles.sectionHeader}>
+                <DollarSign size={13} color={Colors.textMuted} />
+                <Text style={styles.sectionTitle}>PORTFOLIO (SIMULATED)</Text>
+              </View>
+
+              <GlassCard style={styles.portfolioCard} variant="primary">
+                <View style={styles.portfolioMain}>
+                  <Text style={styles.portfolioCapitalLabel}>CAPITAL</Text>
+                  <Text style={styles.portfolioCapitalValue}>
+                    {formatCurrency(portfolio?.capital)}
                   </Text>
-                </>
-              ) : (
-                <Text style={styles.metricValue}>—</Text>
-              )}
-            </GlassCard>
-          </View>
+                </View>
 
-          <View style={styles.metricsGrid}>
-            <GlassCard style={styles.metricCard} variant="subtle">
-              <Text style={styles.metricLabel}>OPEN POSITIONS</Text>
-              <View style={styles.positionRow}>
-                <DollarSign size={18} color={isOnline ? Colors.primary : Colors.textMuted} />
-                <Text style={styles.metricValue}>
-                  {isOnline ? (status?.openPositions ?? 0) : '—'}
-                </Text>
-              </View>
-            </GlassCard>
-            <GlassCard style={styles.metricCard} variant="subtle">
-              <Text style={styles.metricLabel}>UPTIME</Text>
-              <View style={styles.positionRow}>
-                <Clock size={18} color={Colors.textSecondary} />
-                <Text style={styles.metricValue}>
-                  {isOnline ? formatUptime(status?.uptime) : '—'}
-                </Text>
-              </View>
-            </GlassCard>
-          </View>
+                <GlassDivider />
 
-          <GlassCard style={styles.killSwitchCard} variant="primary">
-            <View style={styles.killSwitchHeader}>
-              <Shield size={18} color={isOnline && status?.killSwitchArmed ? Colors.error : Colors.textMuted} />
-              <Text style={styles.killSwitchLabel}>KILL-SWITCH STATUS</Text>
-            </View>
-            <Text style={[
-              styles.killSwitchStatus,
-              { color: isOnline ? (status?.killSwitchArmed ? Colors.error : Colors.success) : Colors.textMuted }
-            ]}>
-              {isOnline ? (status?.killSwitchArmed ? 'ARMED' : 'READY') : '—'}
-            </Text>
-          </GlassCard>
+                <View style={styles.portfolioGrid}>
+                  <View style={styles.portfolioCell}>
+                    <Text style={styles.portfolioLabel}>Open Position</Text>
+                    <Text style={styles.portfolioValue}>
+                      {formatCurrency(portfolio?.open_position_size)}
+                    </Text>
+                  </View>
+                  <View style={styles.portfolioCell}>
+                    <Text style={styles.portfolioLabel}>Entry Price</Text>
+                    <Text style={styles.portfolioValue}>
+                      {formatCurrency(portfolio?.entry_price)}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.portfolioGrid}>
+                  <View style={styles.portfolioCell}>
+                    <Text style={styles.portfolioLabel}>Unrealized P&L</Text>
+                    <View style={styles.pnlRow}>
+                      {(portfolio?.unrealized_pnl ?? 0) >= 0 ? (
+                        <TrendingUp size={14} color={getPnlColor(portfolio?.unrealized_pnl)} />
+                      ) : (
+                        <TrendingDown size={14} color={getPnlColor(portfolio?.unrealized_pnl)} />
+                      )}
+                      <Text style={[styles.portfolioValue, { color: getPnlColor(portfolio?.unrealized_pnl) }]}>
+                        {formatCurrency(portfolio?.unrealized_pnl)}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.portfolioCell}>
+                    <Text style={styles.portfolioLabel}>Realized P&L</Text>
+                    <View style={styles.pnlRow}>
+                      {(portfolio?.realized_pnl ?? 0) >= 0 ? (
+                        <TrendingUp size={14} color={getPnlColor(portfolio?.realized_pnl)} />
+                      ) : (
+                        <TrendingDown size={14} color={getPnlColor(portfolio?.realized_pnl)} />
+                      )}
+                      <Text style={[styles.portfolioValue, { color: getPnlColor(portfolio?.realized_pnl) }]}>
+                        {formatCurrency(portfolio?.realized_pnl)}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              </GlassCard>
+
+              <View style={styles.sectionHeader}>
+                <BookOpen size={13} color={Colors.textMuted} />
+                <Text style={styles.sectionTitle}>LEARNING</Text>
+              </View>
+
+              <GlassCard style={styles.learningCard} variant="primary">
+                <View style={styles.learningGrid}>
+                  <View style={styles.learningCell}>
+                    <Gauge size={16} color={Colors.textSecondary} />
+                    <Text style={styles.learningLabel}>Threshold</Text>
+                    <Text style={styles.learningValue}>
+                      {formatNumber(metrics?.current_threshold)}
+                    </Text>
+                  </View>
+                  <View style={styles.learningCell}>
+                    <BarChart3 size={16} color={Colors.textSecondary} />
+                    <Text style={styles.learningLabel}>Multiplier</Text>
+                    <Text style={styles.learningValue}>
+                      {formatNumber(metrics?.current_multiplier, 2)}
+                    </Text>
+                  </View>
+                </View>
+
+                <GlassDivider />
+
+                <View style={styles.learningGrid}>
+                  <View style={styles.learningCell}>
+                    <Target size={16} color={getOutcomeColor(metrics?.last_trade_outcome)} />
+                    <Text style={styles.learningLabel}>Last Trade</Text>
+                    <Text style={[styles.learningValue, { color: getOutcomeColor(metrics?.last_trade_outcome) }]}>
+                      {metrics?.last_trade_outcome ?? '—'}
+                    </Text>
+                  </View>
+                  <View style={styles.learningCell}>
+                    <Trophy size={16} color={metrics?.rolling_win_rate !== null ? Colors.shadow : Colors.textMuted} />
+                    <Text style={styles.learningLabel}>Win Rate</Text>
+                    <Text style={[styles.learningValue, { color: metrics?.rolling_win_rate !== null ? Colors.shadow : Colors.textMuted }]}>
+                      {metrics?.rolling_win_rate !== null ? formatPercent(metrics?.rolling_win_rate) : 'N/A'}
+                    </Text>
+                  </View>
+                </View>
+              </GlassCard>
+            </>
+          )}
 
           <GlassCard style={styles.readOnlyNotice} variant="subtle">
-            <Eye size={16} color={Colors.textMuted} />
+            <Eye size={14} color={Colors.textMuted} />
             <Text style={styles.readOnlyText}>
-              This is a read-only view. Trading controls are not available on mobile.
+              Zero trading controls. Zero parameter editing. Zero execution authority. This app monitors only.
             </Text>
           </GlassCard>
 
-          <View style={{ height: 100 }} />
+          <View style={{ height: 120 }} />
         </ScrollView>
       </Animated.View>
     </View>
@@ -314,25 +421,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
-  glowOrb: {
-    position: 'absolute',
-    borderRadius: 999,
-    opacity: 0.15,
-  },
-  glowOrb1: {
-    width: 300,
-    height: 300,
-    top: -100,
-    right: -100,
-    backgroundColor: Colors.primary,
-  },
-  glowOrb2: {
-    width: 200,
-    height: 200,
-    bottom: 100,
-    left: -80,
-    backgroundColor: Colors.primary,
-  },
   content: {
     flex: 1,
   },
@@ -341,7 +429,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingVertical: 14,
   },
   headerLeft: {
     flexDirection: 'row',
@@ -349,26 +437,40 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   logoContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    backgroundColor: Colors.primary + '15',
+    width: 42,
+    height: 42,
+    borderRadius: 13,
+    backgroundColor: Colors.primary + '18',
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: Colors.primary + '30',
+    borderColor: Colors.primary + '35',
+  },
+  logoX: {
+    fontSize: 22,
+    fontWeight: '900' as const,
+    color: Colors.primary,
+    letterSpacing: -1,
+  },
+  logoPulse: {
+    position: 'absolute',
+    width: 42,
+    height: 42,
+    borderRadius: 13,
+    borderWidth: 1.5,
+    borderColor: Colors.primary + '50',
   },
   title: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '800' as const,
     color: Colors.text,
     letterSpacing: 2,
   },
   subtitle: {
-    fontSize: 11,
+    fontSize: 10,
     color: Colors.textMuted,
     letterSpacing: 0.5,
-    marginTop: 2,
+    marginTop: 1,
   },
   badgeContent: {
     flexDirection: 'row',
@@ -376,200 +478,248 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   monitorBadgeText: {
-    fontSize: 9,
+    fontSize: 8,
     fontWeight: '800' as const,
-    color: Colors.primary,
     letterSpacing: 1,
-  },
-  safetyBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 10,
-    marginHorizontal: 16,
-    borderRadius: 10,
-    overflow: 'hidden',
-  },
-  safetyBannerText: {
-    fontSize: 10,
-    fontWeight: '700' as const,
-    color: Colors.warning,
-    letterSpacing: 0.5,
   },
   scrollContent: {
     flex: 1,
+  },
+  scrollInner: {
     padding: 16,
+    paddingTop: 8,
   },
-  stateCard: {
-    marginBottom: 20,
+  statusBar: {
+    marginBottom: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
   },
-  stateHeader: {
+  statusRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'center',
   },
-  stateIndicator: {
+  statusItem: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 6,
+  },
+  statusLabel: {
+    fontSize: 8,
+    fontWeight: '700' as const,
+    color: Colors.textMuted,
+    letterSpacing: 1.2,
+  },
+  statusValueRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 4,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  statusValue: {
+    fontSize: 11,
+    fontWeight: '800' as const,
+    color: Colors.text,
+    letterSpacing: 0.5,
+  },
+  statusValueSmall: {
+    fontSize: 9,
+    fontWeight: '700' as const,
+    color: Colors.textSecondary,
+    letterSpacing: 0.3,
+    textAlign: 'center' as const,
+  },
+  statusDivider: {
+    width: 1,
+    height: 28,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  offlineCard: {
+    alignItems: 'center',
+    paddingVertical: 40,
+    marginBottom: 16,
     gap: 12,
   },
-  stateDot: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    opacity: 0.3,
+  offlineTitle: {
+    fontSize: 15,
+    fontWeight: '700' as const,
+    color: Colors.offline,
+    letterSpacing: 0.5,
+    textAlign: 'center' as const,
   },
-  stateDotInner: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  stateText: {
-    fontSize: 20,
-    fontWeight: '800' as const,
-    letterSpacing: 2,
-  },
-  modeBadge: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 10,
-    borderWidth: 1,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-  },
-  modeText: {
+  offlineSubtitle: {
     fontSize: 12,
-    fontWeight: '800' as const,
-    letterSpacing: 1,
+    color: Colors.textMuted,
+    textAlign: 'center' as const,
+    lineHeight: 18,
+    paddingHorizontal: 20,
   },
-  brokerRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  brokerChip: {
+  offlinePulseRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
+    marginTop: 8,
   },
-  brokerName: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-    fontWeight: '600' as const,
+  offlinePulseDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: Colors.offline,
+  },
+  offlinePulseText: {
+    fontSize: 10,
+    color: Colors.textMuted,
+    letterSpacing: 0.5,
   },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
+    gap: 6,
+    marginBottom: 10,
+    marginTop: 4,
   },
   sectionTitle: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700' as const,
     color: Colors.textMuted,
     letterSpacing: 1.5,
   },
   engineCard: {
-    marginBottom: 20,
+    marginBottom: 16,
   },
-  engineRow: {
+  engineGrid: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.05)',
+    flexWrap: 'wrap',
   },
-  lastRow: {
-    borderBottomWidth: 0,
+  engineCell: {
+    width: '50%',
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+  },
+  engineCellFull: {
+    width: '100%',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.04)',
+    marginTop: 4,
+    paddingTop: 14,
   },
   engineLabel: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-    fontWeight: '500' as const,
+    fontSize: 10,
+    fontWeight: '600' as const,
+    color: Colors.textMuted,
+    letterSpacing: 0.8,
+    marginBottom: 6,
   },
   engineValue: {
+    fontSize: 15,
+    fontWeight: '700' as const,
+    color: Colors.text,
+  },
+  engineValueLarge: {
+    fontSize: 20,
+    fontWeight: '800' as const,
+    color: Colors.text,
+  },
+  signalRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
   },
-  engineValueText: {
-    fontSize: 13,
-    fontWeight: '700' as const,
-    color: Colors.text,
+  confidenceContainer: {
+    gap: 8,
   },
-  metricsGrid: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 12,
+  confidenceBar: {
+    height: 3,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 2,
+    overflow: 'hidden',
   },
-  metricCard: {
-    flex: 1,
+  confidenceFill: {
+    height: '100%',
+    borderRadius: 2,
   },
-  metricLabel: {
-    fontSize: 10,
+  portfolioCard: {
+    marginBottom: 16,
+  },
+  portfolioMain: {
+    alignItems: 'center',
+    paddingBottom: 4,
+  },
+  portfolioCapitalLabel: {
+    fontSize: 9,
     fontWeight: '700' as const,
     color: Colors.textMuted,
     letterSpacing: 1.5,
-    marginBottom: 8,
+    marginBottom: 4,
   },
-  metricValue: {
-    fontSize: 22,
+  portfolioCapitalValue: {
+    fontSize: 28,
+    fontWeight: '800' as const,
+    color: Colors.text,
+    letterSpacing: -0.5,
+  },
+  portfolioGrid: {
+    flexDirection: 'row',
+  },
+  portfolioCell: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+  },
+  portfolioLabel: {
+    fontSize: 10,
+    fontWeight: '600' as const,
+    color: Colors.textMuted,
+    letterSpacing: 0.5,
+    marginBottom: 6,
+  },
+  portfolioValue: {
+    fontSize: 15,
     fontWeight: '700' as const,
     color: Colors.text,
   },
   pnlRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 5,
+  },
+  learningCard: {
+    marginBottom: 16,
+  },
+  learningGrid: {
+    flexDirection: 'row',
+  },
+  learningCell: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 12,
     gap: 6,
   },
-  metricPercent: {
-    fontSize: 13,
+  learningLabel: {
+    fontSize: 10,
     fontWeight: '600' as const,
-    marginTop: 4,
-  },
-  positionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  killSwitchCard: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  killSwitchHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  killSwitchLabel: {
-    fontSize: 12,
-    fontWeight: '700' as const,
     color: Colors.textMuted,
-    letterSpacing: 1,
+    letterSpacing: 0.5,
   },
-  killSwitchStatus: {
-    fontSize: 14,
+  learningValue: {
+    fontSize: 18,
     fontWeight: '800' as const,
-    letterSpacing: 1,
+    color: Colors.text,
   },
   readOnlyNotice: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
+    marginTop: 8,
   },
   readOnlyText: {
     flex: 1,
-    fontSize: 12,
+    fontSize: 11,
     color: Colors.textMuted,
-    lineHeight: 18,
+    lineHeight: 16,
   },
 });
