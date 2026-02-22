@@ -18,7 +18,7 @@ export default function Index() {
 
   useEffect(() => {
     if (readyToRoute) {
-      router.replace("/overview");
+      router.replace("/(tabs)/overview" as never);
     }
   }, [readyToRoute, router]);
 

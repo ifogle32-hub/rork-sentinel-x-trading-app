@@ -11,7 +11,7 @@ export default function NotFoundScreen() {
         <AlertCircle size={64} color={Colors.primary} />
         <Text style={styles.title}>404 - NOT FOUND</Text>
         <Text style={styles.message}>This screen doesn&apos;t exist.</Text>
-        <Link href="/dashboard" style={styles.link}>
+        <Link href={"/(tabs)/overview" as never} style={styles.link}>
           <Text style={styles.linkText}>Return to Dashboard</Text>
         </Link>
       </View>
